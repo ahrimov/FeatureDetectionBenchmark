@@ -2,6 +2,7 @@ import os
 import sys
 import numpy as np
 import cv2 as cv
+import timeit
 
 
 import lang
@@ -62,8 +63,14 @@ def main():
     if output_directory == '':
         output_directory = '/outputs/'
 
+    start = timeit.default_timer()
+
     # TODO: вычисления местоположения робота
     # calculate()
+
+    stop = timeit.default_timer()
+
+    print('Время выполнения вычислений: ', stop - start)
 
     if not os.path.exists(os.getcwd() + output_directory):
         os.mkdir(os.getcwd() + '/' + output_directory)
