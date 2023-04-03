@@ -4,8 +4,9 @@ import numpy as np
 import cv2 as cv
 import timeit
 
-
 import lang
+import loadData
+from tracking import calculate_track
 
 feature_detection_algorithm_names = ['surf', 'sift', 'orb', 'kaze', 'brisk']
 # TODO: эффекты искажения могут измениться/дополниться
@@ -63,12 +64,18 @@ def main():
     if output_directory == '':
         output_directory = '/outputs/'
 
+    images = loadData.load_images(path_to_dataset_directory)
+    projection_mat, intrinsic_mat = loadData.load_calib(calib_filename)
+
     start = timeit.default_timer()
+    track = calculate_track(images, feature_detection_algorithm, projection_mat, intrinsic_mat)
 
     # TODO: вычисления местоположения робота
     # calculate()
 
     stop = timeit.default_timer()
+
+    print(track)
 
     print('Время выполнения вычислений: ', stop - start)
 
