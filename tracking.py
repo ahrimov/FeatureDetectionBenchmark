@@ -48,14 +48,14 @@ def get_transform_mat(pts1, pts2, intrinsic_mat):
     pts1 = np.int32(pts1)
     pts2 = np.int32(pts2)
 
-    essential_mat, mask = cv.findEssentialMat(pts1, pts2, intrinsic_mat)
+    essential_mat, mask = cv.findEssentialMat(pts1, pts2, intrinsic_mat, 1, 0.95)
 
     R = cv.recoverPose(essential_mat, pts1, pts2, intrinsic_mat, np.array(0))
 
     t = R[2]
     R = R[1]
 
-    return _form_transf(R, np.ndarray.flatten(t))
+    return form_transf(R, np.ndarray.flatten(t))
 
 
 def test_find_matches():
