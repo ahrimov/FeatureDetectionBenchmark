@@ -1,28 +1,23 @@
 import numpy as np
 from matplotlib import pyplot as plt
+plt.rcParams['axes.grid'] = True
 
-
-def show_track(gt_track, es_track):
-    track = np.array(gt_track)
+def show_track(ground_track, estimated_track):
+    track = np.array(ground_track)
     a = track.T
-    print(a)
     x = a[0]
     y = a[1]
-    print(x)
-    print(y)
 
     # plot
-    fig, ax = plt.subplots()
-    ax.plot(x, y, linewidth=2.5)
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    ax1.plot(x, y, linewidth=2.5, color='r')
 
-    track = np.array(es_track)
+    track = np.array(estimated_track)
     a = track.T
-    print(a)
     x = a[0]
     y = a[1]
-    print(x)
-    print(y)
+    ax1.plot(x, y, linewidth=1, color='b')
 
-    ax.plot(x, y, linewidth=1)
-
+    error = np.linalg.norm(np.array(ground_track) - np.array(estimated_track), axis=1)
+    ax2.plot(range(len(error)), error, linewidth=1)
     plt.show()

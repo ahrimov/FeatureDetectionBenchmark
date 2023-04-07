@@ -13,8 +13,8 @@ ground_truth = loadData.load_poses('./sample/dataset/00/poses.txt')
 gt_path = []
 es_path = []
 #print(ground_truth[0][0])
-images = images[:50]
-ground_truth = ground_truth[:50]
+images = images[:]
+ground_truth = ground_truth[:]
 track = calculate_track(images, feature_detection_algorithm, projection_mat, intrinsic_mat, initial_pose=ground_truth[0])
 
 for i, gt_pose in enumerate(ground_truth):
