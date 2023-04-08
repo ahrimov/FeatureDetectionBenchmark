@@ -1,40 +1,118 @@
 import os
 import sys
-import numpy as np
-import cv2 as cv
+import argparse
 import timeit
+
+import numpy as np
 
 import lang
 import loadData
+from image_distortion import add_blur, add_sp_noise, add_uniform_noise, add_gaussian_noise
+from test import test
 from tracking import calculate_track
+from visualization import show_track
 
 feature_detection_algorithm_names = ['surf', 'sift', 'orb', 'kaze', 'brisk']
 # TODO: эффекты искажения могут измениться/дополниться
-distortion_effects = ['размытие', 'шум']
+distortion_effects = ['blur', 'impulse', 'uniform', 'gauss']
 
 
 def main():
-    calib_filename = ''
-    images_directory_name = ''
-    true_position_filename = ''
+    parser = argparse.ArgumentParser(prog=lang.program_name, description=lang.program_description)
+    parser.add_argument('-n', '--no-asking', dest='no_asking', action='store_const',
+                        const=True, default=False, help=lang.argument_no_asking_help)
+    args = parser.parse_args()
+    path_to_dataset_directory = os.getcwd() + '/sample/dataset/00/'
+    calib_filename = 'calib.txt'
+    images_directory_name = '/image_0/'
+    true_position_filename = 'poses.txt'
+    feature_detection_algorithm = 'sift'
+    output_directory = '/outputs/'
+    threshold = 1
+    iteration = 1
+
+    if not args.no_asking:
+        args_from_line = interaction_with_user()
+        path_to_dataset_directory = args_from_line[0]
+        calib_filename = args_from_line[1]
+        images_directory_name = args_from_line[2]
+        true_position_filename = args_from_line[3]
+        feature_detection_algorithm = args_from_line[4]
+        threshold = args_from_line[5]
+        iteration = args_from_line[6]
+        image_distortions = args_from_line[7]
+        output_directory = args_from_line[8]
+
+    images = loadData.load_images(path_to_dataset_directory + images_directory_name)
+    projection_mat, intrinsic_mat = loadData.load_calib(path_to_dataset_directory + calib_filename)
+    ground_truth = loadData.load_poses(path_to_dataset_directory + true_position_filename)
+
+    for distortion in image_distortions:
+        if distortion == 'blur':
+            images = add_blur(images)
+        elif distortion == 'impulse':
+            images = add_sp_noise(images, 0.05)
+        elif distortion == 'uniform':
+            images = add_uniform_noise(images, 0.5)
+        elif distortion == 'gauss':
+            images = add_gaussian_noise(images, 0.5)
+
+    images = images[:50]
+    ground_truth = ground_truth[:50]
+
+    track = np.array([])
+    time = 0
+    for i in range(iteration):
+        start = timeit.default_timer()
+        piece = np.array(calculate_track(images, feature_detection_algorithm, projection_mat,
+                                intrinsic_mat, initial_pose=ground_truth[0], threshold=threshold))
+        if i == 0:
+            track = piece
+        else:
+            track += piece
+        stop = timeit.default_timer()
+        current_time = stop - start
+        time += current_time
+        print('Время выполнения вычислений для итерации {}: {} c.'.format(i+1, current_time))
+
+    track = track / iteration
+    time /= iteration
+
+    print('Среднее время выполнения: {} c.'.format(time))
+
+    gt_path = []
+    es_path = []
+    for i, gt_pose in enumerate(ground_truth):
+        gt_path.append((gt_pose[0, 3], gt_pose[2, 3]))
+    for i, pose in enumerate(track):
+        es_path.append((pose[0, 3], pose[2, 3]))
+
+    show_track(gt_path, es_path, output_directory)
+
+    if not os.path.exists(os.getcwd() + output_directory):
+        os.mkdir(os.getcwd() + '/' + output_directory)
+
+
+def interaction_with_user():
+    calib_filename = 'calib.txt'
+    images_directory_name = '/image_0/'
+    true_position_filename = 'poses.txt'
+    threshold = 1
+    iteration = 1
     path_to_dataset_directory = input(lang.greetings_text)
     while path_to_dataset_directory != '' and not os.path.exists(path_to_dataset_directory):
         path_to_dataset_directory = input(lang.fail_input_directory_text)
-
     if path_to_dataset_directory == '':
-        path_to_dataset_directory = os.getcwd() + '/sample/'
-        calib_filename = 'calib.txt'
-        images_directory_name = '/images/'
-        true_position_filename = 'poses.txt'
+        path_to_dataset_directory = os.getcwd() + '/sample/dataset/00/'
     else:
         calib_filename = input(lang.input_calib_filename_text)
-        while calib_filename != '' and not os.path.exists(calib_filename):
+        while calib_filename != '' and not os.path.exists(path_to_dataset_directory + calib_filename):
             calib_filename = input(lang.fail_input_filename_text)
         images_directory_name = input(lang.input_images_directory_text)
-        while not os.path.exists(images_directory_name):
+        while not os.path.exists(path_to_dataset_directory + images_directory_name):
             images_directory_name = input(lang.fail_input_directory_text)
         true_position_filename = input(lang.input_position_filename_text)
-        while true_position_filename != '' and not os.path.exists(true_position_filename):
+        while true_position_filename != '' and not os.path.exists(path_to_dataset_directory + true_position_filename):
             true_position_filename = input(lang.fail_input_filename_text)
 
     feature_detection_algorithm = input(lang.input_choose_feature_detection_algorithm_text)
@@ -42,6 +120,22 @@ def main():
         feature_detection_algorithm = input(lang.fail_input_choose_feature_detection_algorithm_text)
     if feature_detection_algorithm == '':
         feature_detection_algorithm = 'sift'
+
+    threshold = input(lang.input_threshold)
+    while threshold != '' and not is_float(threshold):
+        threshold = input(lang.fail_input_threshold)
+    if threshold == '':
+        threshold = 1
+    else:
+        threshold = float(threshold)
+
+    iteration = input(lang.input_iteration)
+    while iteration != '' and not iteration.isnumeric():
+        iteration = input(lang.fail_input_iteration)
+    if iteration == '':
+        iteration = 1
+    else:
+        iteration = int(iteration)
 
     image_distortions = set()
     user_answer = input(lang.question_distortion_text)
@@ -63,24 +157,18 @@ def main():
     output_directory = input(lang.ask_output_directory_text)
     if output_directory == '':
         output_directory = '/outputs/'
+    return path_to_dataset_directory, calib_filename, images_directory_name, true_position_filename, \
+           feature_detection_algorithm, threshold, iteration, image_distortions, output_directory
 
-    images = loadData.load_images(path_to_dataset_directory)
-    projection_mat, intrinsic_mat = loadData.load_calib(calib_filename)
 
-    start = timeit.default_timer()
-    track = calculate_track(images, feature_detection_algorithm, projection_mat, intrinsic_mat)
-
-    # TODO: вычисления местоположения робота
-    # calculate()
-
-    stop = timeit.default_timer()
-
-    print(track)
-
-    print('Время выполнения вычислений: ', stop - start)
-
-    if not os.path.exists(os.getcwd() + output_directory):
-        os.mkdir(os.getcwd() + '/' + output_directory)
+def is_float(element: any) -> bool:
+    if element is None:
+        return False
+    try:
+        float(element)
+        return True
+    except ValueError:
+        return False
 
 
 if __name__ == '__main__':
