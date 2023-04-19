@@ -1,14 +1,18 @@
 import cv2 as cv
 import os
 import numpy as np
+from progress.bar import Bar
 
 
 def load_images(folder):
     images = []
+    bar = Bar('Загрузка изображений: ', max=len(os.listdir(folder)))
     for filename in os.listdir(folder):
         image = cv.imread(os.path.join(folder, filename))
+        bar.next()
         if image is not None:
             images.append(image)
+    bar.finish()
     return images
 
 
@@ -34,3 +38,48 @@ def load_poses(filepath):
             T = np.vstack((T, [0, 0, 0, 1]))
             poses.append(T)
     return poses
+
+
+def load_quaternion_poses(filepath):
+    poses = []
+    with open(filepath, 'r') as f:
+        for line in f.readlines():
+            L = np.fromstring(line, dtype=np.float64, sep=',')
+            t = L[1:4]
+            quaternion = L[4:8]
+            R = quaternion_to_mat(quaternion[0],quaternion[1],quaternion[2],quaternion[3])
+            T = np.array([[R[0,0],R[0,1],R[0,2],t[0]],
+                          [R[1,0],R[1,1],R[1,2],t[1]],
+                          [R[2,0],R[2,1],R[2,2],t[2]],
+                          [0, 0, 0, 1]
+                          ])
+            poses.append(T)
+    return poses
+
+
+def quaternion_to_mat(W, X, Y, Z):
+    xx = X * X
+    xy = X * Y
+    xz = X * Z
+    xw = X * W
+
+    yy = Y * Y
+    yz = Y * Z
+    yw = Y * W
+
+    zz = Z * Z
+    zw = Z * W
+    m00 = 1 - 2 * (yy + zz)
+    m01 = 2 * (xy - zw)
+    m02 = 2 * (xz + yw)
+
+    m10 = 2 * (xy + zw)
+    m11 = 1 - 2 * (xx + zz)
+    m12 = 2 * (yz - xw)
+
+    m20 = 2 * (xz - yw)
+    m21 = 2 * (yz + xw)
+    m22 = 1 - 2 * (xx + yy)
+    return np.array([[m00,m01,m02],
+                     [m10,m11,m12],
+                     [m20,m21,m22]])

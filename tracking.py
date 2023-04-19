@@ -6,7 +6,7 @@ import loadData
 from progress.bar import Bar
 
 
-def calculate_track(images, detector_name, projection_mat, intrinsic_mat, initial_pose, threshold=0.5):
+def calculate_track(images, detector_name, intrinsic_mat, initial_pose, ground_truth, threshold=1, inverse_mat=False):
     current_pose = initial_pose
     track = [current_pose]
     detector, matcher = create_detector_and_matcher(detector_name)
@@ -19,12 +19,56 @@ def calculate_track(images, detector_name, projection_mat, intrinsic_mat, initia
         else:
             pts1, pts2 = find_matches(images[i-1], images[i], detector, matcher, threshold)
             counter_matches += len(pts1)
-            transform_mat = get_transform_mat(pts1, pts2, intrinsic_mat)
-            current_pose = np.matmul(current_pose, np.linalg.inv(transform_mat))
+            R, t = get_R_T(pts1, pts2, intrinsic_mat)
+            absolute_scale = get_absolute_scale(ground_truth[i - 1], ground_truth[i])
+            t = absolute_scale * t
+            transform_mat = form_transf(R, np.ndarray.flatten(t))
+            if inverse_mat:
+                current_pose = np.matmul(current_pose, np.linalg.inv(transform_mat))
+            else:
+                current_pose = np.matmul(current_pose, transform_mat)
             track.append(current_pose)
     bar.finish()
     print('Среднее количество "хороших" совпадений: ', counter_matches/len(images))
     return track
+
+
+def track_points(detector, img1, img2, intrinsic_mat, M):
+    points = detector.detect(img1)
+    points = np.array([x.pt for x in points], dtype=np.float32).reshape(-1, 1, 2)
+
+    lk_params = dict(winSize=(21, 21), criteria=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT, 30, 0.01))
+
+    p1, st, err = cv.calcOpticalFlowPyrLK(img1, img2, points, None, **lk_params)
+    if p1 is not None:
+        good_new = p1[st == 1]
+        good_old = points[st == 1]
+
+    essential_mat, _ = cv.findEssentialMat(good_new, good_old, intrinsic_mat, cv.RANSAC)
+    M = cv.recoverPose(essential_mat, good_old, good_new, intrinsic_mat, np.array(0))
+
+    R = M[1]
+    t = M[2]
+    # absolute_scale = get_absolute_scale()
+    # t = t + absolute_scale * R.dot(t)
+    # if absolute_scale > 0.1 and abs(t[2][0]) > abs(t[0][0]) and abs(t[2][0]) > abs(t[1][0]):
+    #     t = t + absolute_scale * R.dot(t)
+    #     R = R.dot(R)
+
+    return form_transf(R, np.ndarray.flatten(t))
+
+
+def get_absolute_scale(prev_pose, cur_pose):
+    x_prev = float(prev_pose[0, 3])
+    y_prev = float(prev_pose[1, 3])
+    z_prev = float(prev_pose[2, 3])
+    x = float(cur_pose[0, 3])
+    y = float(cur_pose[1, 3])
+    z = float(cur_pose[2, 3])
+
+    true_vect = np.array([[x], [y], [z]])
+    prev_vect = np.array([[x_prev], [y_prev], [z_prev]])
+    return np.linalg.norm(true_vect - prev_vect)
 
 
 def create_detector_and_matcher(detector_name):
@@ -44,9 +88,9 @@ def create_detector_and_matcher(detector_name):
         # bf = cv.BFMatcher()
         return surf, flann
     elif detector_name == 'orb':
-        orb = cv.ORB_create()
+        orb = cv.ORB_create(3000)
         index_params = dict(algorithm=FLANN_INDEX_LSH, table_number=6, key_size=12, multi_probe_level=1)
-        search_params = dict(checks=300)
+        search_params = dict(checks=50)
         flann = cv.FlannBasedMatcher(index_params, search_params)
         # bf = cv.BFMatcher()
         return orb, flann
@@ -86,14 +130,27 @@ def get_transform_mat(pts1, pts2, intrinsic_mat):
     pts1 = np.int32(pts1)
     pts2 = np.int32(pts2)
 
-    essential_mat, mask = cv.findEssentialMat(pts1, pts2, intrinsic_mat, 1, 0.95)
+    essential_mat, mask = cv.findEssentialMat(pts1, pts2, intrinsic_mat, cv.RANSAC)
 
-    R = cv.recoverPose(essential_mat, pts1, pts2, intrinsic_mat, np.array(0))
+    M = cv.recoverPose(essential_mat, pts1, pts2, intrinsic_mat)
 
-    t = R[2]
-    R = R[1]
+    t = M[2]
+    R = M[1]
 
     return form_transf(R, np.ndarray.flatten(t))
+
+def get_R_T(pts1, pts2, intrinsic_mat):
+    pts1 = np.int32(pts1)
+    pts2 = np.int32(pts2)
+
+    essential_mat, mask = cv.findEssentialMat(pts1, pts2, intrinsic_mat, cv.RANSAC)
+
+    M = cv.recoverPose(essential_mat, pts1, pts2, intrinsic_mat)
+
+    t = M[2]
+    R = M[1]
+
+    return R, t
 
 
 def test_find_matches():
@@ -154,3 +211,29 @@ def draw_matches(img1, img2, threshold=0.8):
 
     img3 = cv.drawMatchesKnn(img1, keypoint1, img2, keypoint2, matches, None, **draw_params)
     plt.imshow(img3, ), plt.show()
+
+
+def estimate_path(images, detector_name, intrinsic_mat, initial_pose, ground_truth, threshold=1):
+    current_pose = initial_pose
+    track = [current_pose]
+    detector, matcher = create_detector_and_matcher(detector_name)
+    counter_matches = 0
+    camera_rot = np.eye(3)
+    bar = Bar('Обработка изображений:', max=len(images))
+    for i, image in enumerate(images):
+        bar.next()
+        if i == 0:
+            continue
+        else:
+            pts1, pts2 = find_matches(images[i-1], images[i], detector, matcher, threshold)
+            counter_matches += len(pts1)
+            R, T = get_R_T(pts1,pts2,intrinsic_mat)
+            absolute_scale = get_absolute_scale(ground_truth[i - 1], ground_truth[i])
+            print(absolute_scale*camera_rot.dot(T))
+            current_pose = current_pose + absolute_scale*camera_rot.dot(T)
+            camera_rot = R.dot(camera_rot)
+            track.append(np.array([current_pose[0,0], current_pose[1,0], current_pose[2,0]]))
+    bar.finish()
+    print(track)
+    print('Среднее количество "хороших" совпадений: ', counter_matches/len(images))
+    return track
