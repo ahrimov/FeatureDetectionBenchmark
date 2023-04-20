@@ -9,7 +9,7 @@ import lang
 import loadData
 from image_distortion import add_blur, add_sp_noise, add_uniform_noise, add_gaussian_noise
 from tracking import calculate_track, estimate_path
-from visualization import show_track
+from visualization import show_track, show_tracks
 
 feature_detection_algorithm_names = ['surf', 'sift', 'orb', 'kaze', 'brisk']
 # TODO: эффекты искажения могут измениться/дополниться
@@ -79,6 +79,12 @@ def main():
         iteration = args.iteration
         output_directory = args.output_directory
 
+    algorithms = []
+    feature_detection_algorithm = feature_detection_algorithm.split(',')
+    for alg in feature_detection_algorithm:
+        if alg in feature_detection_algorithm_names:
+            algorithms.append(alg)
+
     images = loadData.load_images(path_to_dataset_directory + '/' + images_directory_name + '/')
     projection_mat, intrinsic_mat = loadData.load_calib(path_to_dataset_directory + '/' + calib_filename)
     if args.quaternion_poses:
@@ -102,41 +108,44 @@ def main():
 
     init_pose = ground_truth[0]
     #init_pose = np.array([init_pose[0,3], init_pose[1,3], init_pose[2,3]])
-
-    track = np.array([])
-    time = 0
-    for i in range(iteration):
-        start = timeit.default_timer()
-        piece = np.array(calculate_track(images, feature_detection_algorithm,
-                                intrinsic_mat, initial_pose=init_pose, ground_truth=ground_truth,
-                                         threshold=threshold, inverse_mat=args.inverse_mat))
-        if i == 0:
-            track = piece
-        else:
-            track += piece
-        stop = timeit.default_timer()
-        current_time = stop - start
-        time += current_time
-        print('Время выполнения вычислений для итерации {}: {} c.'.format(i+1, current_time))
-
-    track = track / iteration
-    time /= iteration
-
-    print('Среднее время выполнения: {} c.'.format(time))
-
     gt_path = []
-    es_path = []
     x_index = args.order.find('x')
     y_index = args.order.find('y')
     for i, gt_pose in enumerate(ground_truth):
         gt_path.append((gt_pose[x_index, 3], gt_pose[y_index, 3]))
-    for i, pose in enumerate(track):
-        es_path.append((pose[x_index, 3], pose[y_index, 3]))
+
+    track = np.array([])
+    time = 0
+    result = {}
+    for feature_detection_algorithm in algorithms:
+        time = 0
+        for i in range(iteration):
+            start = timeit.default_timer()
+            piece = np.array(calculate_track(images, feature_detection_algorithm,
+                                    intrinsic_mat, initial_pose=init_pose, ground_truth=ground_truth,
+                                             threshold=threshold, inverse_mat=args.inverse_mat))
+            if i == 0:
+                track = piece
+            else:
+                track += piece
+            stop = timeit.default_timer()
+            current_time = stop - start
+            time += current_time
+            print('Время выполнения вычислений для итерации {}: {} c.'.format(i+1, current_time))
+
+        track = track / iteration
+        time /= iteration
+
+        print('Среднее время выполнения: {} c.'.format(time))
+        es_path = []
+        for i, pose in enumerate(track):
+            es_path.append((pose[x_index, 3], pose[y_index, 3]))
+        result[feature_detection_algorithm] = es_path
     # print(track)
     # for i, pose in enumerate(track):
     #      es_path.append((pose[0], pose[2]))
 
-    show_track(gt_path, es_path, output_directory)
+    show_tracks(gt_path, result, output_directory)
 
     if not os.path.exists(os.getcwd() + output_directory):
         os.mkdir(os.getcwd() + '/' + output_directory)
@@ -171,7 +180,7 @@ def interaction_with_user():
             true_position_filename = 'poses.txt'
 
     feature_detection_algorithm = input(lang.input_choose_feature_detection_algorithm_text)
-    while feature_detection_algorithm != '' and feature_detection_algorithm not in feature_detection_algorithm_names:
+    while feature_detection_algorithm != '' and not is_feature_detection_alg(feature_detection_algorithm):
         feature_detection_algorithm = input(lang.fail_input_choose_feature_detection_algorithm_text)
     if feature_detection_algorithm == '':
         feature_detection_algorithm = 'sift'
@@ -224,6 +233,14 @@ def is_float(element: any) -> bool:
         return True
     except ValueError:
         return False
+
+
+def is_feature_detection_alg(string):
+    feature_detection_algorithm = string.split(',')
+    for alg in feature_detection_algorithm:
+        if alg not in feature_detection_algorithm_names:
+            return False
+    return True
 
 
 if __name__ == '__main__':

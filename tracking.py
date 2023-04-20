@@ -11,7 +11,7 @@ def calculate_track(images, detector_name, intrinsic_mat, initial_pose, ground_t
     track = [current_pose]
     detector, matcher = create_detector_and_matcher(detector_name)
     counter_matches = 0
-    bar = Bar('Обработка изображений:', max=len(images))
+    bar = Bar('Обработка изображений детектором {}:'.format(detector_name), max=len(images))
     for i, image in enumerate(images):
         bar.next()
         if i == 0:
@@ -83,14 +83,14 @@ def create_detector_and_matcher(detector_name):
     elif detector_name == 'surf':
         surf = cv.xfeatures2d.SURF_create()
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict(checks=300)
+        search_params = dict()
         flann = cv.FlannBasedMatcher(index_params, search_params)
         # bf = cv.BFMatcher()
         return surf, flann
     elif detector_name == 'orb':
         orb = cv.ORB_create(3000)
         index_params = dict(algorithm=FLANN_INDEX_LSH, table_number=6, key_size=12, multi_probe_level=1)
-        search_params = dict(checks=50)
+        search_params = dict()
         flann = cv.FlannBasedMatcher(index_params, search_params)
         # bf = cv.BFMatcher()
         return orb, flann
