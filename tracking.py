@@ -33,7 +33,7 @@ def calculate_track(images, detector_name, intrinsic_mat, initial_pose, ground_t
     return track
 
 
-def track_points(detector, img1, img2, intrinsic_mat, M):
+def track_points(detector, img1, img2, intrinsic_mat):
     points = detector.detect(img1)
     points = np.array([x.pt for x in points], dtype=np.float32).reshape(-1, 1, 2)
 
@@ -88,7 +88,7 @@ def create_detector_and_matcher(detector_name):
         # bf = cv.BFMatcher()
         return surf, flann
     elif detector_name == 'orb':
-        orb = cv.ORB_create(3000)
+        orb = cv.ORB_create(1000)
         index_params = dict(algorithm=FLANN_INDEX_LSH, table_number=6, key_size=12, multi_probe_level=1)
         search_params = dict()
         flann = cv.FlannBasedMatcher(index_params, search_params)
@@ -138,6 +138,7 @@ def get_transform_mat(pts1, pts2, intrinsic_mat):
     R = M[1]
 
     return form_transf(R, np.ndarray.flatten(t))
+
 
 def get_R_T(pts1, pts2, intrinsic_mat):
     pts1 = np.int32(pts1)

@@ -4,15 +4,31 @@ import numpy as np
 from progress.bar import Bar
 
 
-def load_images(folder):
+def load_images(folder, st_image=0, end_image=0, count=1):
     images = []
-    bar = Bar('Загрузка изображений: ', max=len(os.listdir(folder)))
-    for filename in os.listdir(folder):
-        image = cv.imread(os.path.join(folder, filename))
-        bar.next()
-        if image is not None:
-            images.append(image)
-    bar.finish()
+    filenames = os.listdir(folder)
+    max_images = len(filenames)
+    if st_image == end_image:
+        bar = Bar('Загрузка изображений: ', max=max_images)
+        for filename in os.listdir(folder):
+            image = cv.imread(os.path.join(folder, filename))
+            bar.next()
+            if image is not None:
+                images.append(image)
+        bar.finish()
+    else:
+        if st_image > max_images or end_image > max_images or count > max_images or end_image < st_image:
+            return []
+        bar = Bar('Загрузка изображений: ', max=(end_image-st_image)/count)
+        i = st_image
+        while i < end_image:
+            filename = filenames[i]
+            image = cv.imread(os.path.join(folder, filename))
+            bar.next()
+            if image is not None:
+                images.append(image)
+            i += count
+        bar.finish()
     return images
 
 

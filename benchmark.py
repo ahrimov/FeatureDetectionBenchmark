@@ -85,7 +85,7 @@ def main():
         if alg in feature_detection_algorithm_names:
             algorithms.append(alg)
 
-    images = loadData.load_images(path_to_dataset_directory + '/' + images_directory_name + '/')
+
     projection_mat, intrinsic_mat = loadData.load_calib(path_to_dataset_directory + '/' + calib_filename)
     if args.quaternion_poses:
         ground_truth = loadData.load_quaternion_poses(path_to_dataset_directory + '/' + true_position_filename)
@@ -103,9 +103,11 @@ def main():
             images = add_gaussian_noise(images, 0.5)
 
     if args.start_image != args.end_image:
-        images = images[args.start_image:args.end_image:args.count_image]
+        images = loadData.load_images(path_to_dataset_directory + '/' + images_directory_name + '/',
+                                               args.start_image, args.end_image, args.count_image)
         ground_truth = ground_truth[args.start_image:args.end_image:args.count_image]
-
+    else:
+        images = loadData.load_images(path_to_dataset_directory + '/' + images_directory_name + '/')
     init_pose = ground_truth[0]
     #init_pose = np.array([init_pose[0,3], init_pose[1,3], init_pose[2,3]])
     gt_path = []
@@ -114,8 +116,9 @@ def main():
     for i, gt_pose in enumerate(ground_truth):
         gt_path.append((gt_pose[x_index, 3], gt_pose[y_index, 3]))
 
+    gt_norm = np.linalg.norm(np.array(gt_path), axis=1)
+
     track = np.array([])
-    time = 0
     result = {}
     for feature_detection_algorithm in algorithms:
         time = 0
@@ -131,20 +134,24 @@ def main():
             stop = timeit.default_timer()
             current_time = stop - start
             time += current_time
-            print('Время выполнения вычислений для итерации {}: {} c.'.format(i+1, current_time))
+            print('Время выполнения вычислений для итерации {}: {} c.'.format(i+1, round(current_time,4)))
 
         track = track / iteration
         time /= iteration
 
-        print('Среднее время выполнения: {} c.'.format(time))
+        print('Среднее время выполнения: {} c.'.format(round(time,4)))
         es_path = []
         for i, pose in enumerate(track):
             es_path.append((pose[x_index, 3], pose[y_index, 3]))
         result[feature_detection_algorithm] = es_path
+
+        error = np.linalg.norm(np.array(gt_path) - np.array(es_path), axis=1)
+        rate = error/gt_norm * 100
+        average_rate = np.average(rate)
+        print("Средний процент ошибок {}: {}%".format(feature_detection_algorithm, round(average_rate, 2)))
     # print(track)
     # for i, pose in enumerate(track):
     #      es_path.append((pose[0], pose[2]))
-
     show_tracks(gt_path, result, output_directory)
 
     if not os.path.exists(os.getcwd() + output_directory):
