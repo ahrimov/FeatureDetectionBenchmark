@@ -7,9 +7,9 @@ import numpy as np
 
 import lang
 import loadData
-from image_distortion import add_blur, add_sp_noise, add_uniform_noise, add_gaussian_noise
-from tracking import calculate_track, estimate_path
-from visualization import show_track, show_tracks
+from image_distortion import add_blur, add_impulse_noise, add_uniform_noise, add_gaussian_noise
+from tracking import calculate_track
+from visualization import show_tracks
 
 feature_detection_algorithm_names = ['surf', 'sift', 'orb', 'kaze', 'brisk']
 # TODO: эффекты искажения могут измениться/дополниться
@@ -17,7 +17,7 @@ distortion_effects = ['blur', 'impulse', 'uniform', 'gauss']
 
 
 def main():
-    path_to_dataset_directory = '/sample/dataset/00/'
+    path_to_dataset_directory = '/dataset/'
     calib_filename = 'calib.txt'
     images_directory_name = '/images/'
     true_position_filename = 'poses.txt'
@@ -30,32 +30,34 @@ def main():
     parser.add_argument('-n', '--no-asking', dest='no_asking', action='store_const',
                         const=True, default=False, help=lang.argument_no_asking_help)
     parser.add_argument('-q', '--quaternion', dest='quaternion_poses', action='store_const',
-                        const=True, default=False)
+                        const=True, default=False, help=lang.argument_quaternion_help)
     parser.add_argument('-inv', '--inverse', dest='inverse_mat', action='store_const',
                         const=True, default=False, help=lang.help_inverse)
     parser.add_argument('-p', '--path_to_dataset', dest='path_to_dataset',
-                        required=False, default=path_to_dataset_directory)
+                        required=False, default=path_to_dataset_directory, help=lang.argument_dataset_directory_help)
     parser.add_argument('-i', '--images_directory_name', dest='images_directory_name',
-                        required=False, default=images_directory_name)
+                        required=False, default=images_directory_name, help=lang.argument_images_help)
     parser.add_argument('-c', '--calib_filename', dest='calib_filename',
-                        required=False, default=calib_filename)
+                        required=False, default=calib_filename, help=lang.argument_calib_help)
     parser.add_argument('-gt', '--positions_filename', dest='true_position_filename',
-                        required=False, default=true_position_filename)
-    parser.add_argument('-o', '--order', dest='order', required=False, default='xyz')
+                        required=False, default=true_position_filename, help=lang.argument_poses_help)
+    parser.add_argument('-o', '--order', dest='order', required=False, default='xyz', help=lang.argument_order_help)
     parser.add_argument('-a', '--feature_detection_algorithm', dest='feature_detection_algorithm',
-                        required=False, default=feature_detection_algorithm)
+                        required=False, default=feature_detection_algorithm, help=lang.argument_algorithms_help)
     parser.add_argument('-t', '--threshold', type=float, dest='threshold',
-                        required=False, default=threshold)
+                        required=False, default=threshold, help=lang.argument_threshold_help)
     parser.add_argument('-it', '--iteration', type=int, dest='iteration',
-                        required=False, default=iteration)
+                        required=False, default=iteration, help=lang.argument_iteration_help)
     parser.add_argument('-out', '--output_directory', dest='output_directory',
-                        required=False, default=output_directory)
+                        required=False, default=output_directory, help=lang.argument_output_help)
     parser.add_argument('-st', '--start_image', type=int, dest='start_image',
-                        required=False, default=0)
+                        required=False, default=0, help=lang.argument_start_help)
     parser.add_argument('-end', '--end_image', type=int, dest='end_image',
-                        required=False, default=0)
-    parser.add_argument('-count', '--count_image', type=int, dest='count_image',
-                        required=False, default=1)
+                        required=False, default=0, help=lang.argument_end_help)
+    parser.add_argument('-step', '--step_image', type=int, dest='count_image',
+                        required=False, default=1, help=lang.argument_step_help)
+    parser.add_argument('-e', '--effects', dest='image_distortions',
+                        required=False, default="", help=lang.argument_effects_help)
     args = parser.parse_args()
 
     if not args.no_asking:
@@ -78,6 +80,7 @@ def main():
         threshold = args.threshold
         iteration = args.iteration
         output_directory = args.output_directory
+        image_distortions = args.image_distortions.split(',')
 
     algorithms = []
     feature_detection_algorithm = feature_detection_algorithm.split(',')
@@ -85,31 +88,37 @@ def main():
         if alg in feature_detection_algorithm_names:
             algorithms.append(alg)
 
-
     projection_mat, intrinsic_mat = loadData.load_calib(path_to_dataset_directory + '/' + calib_filename)
     if args.quaternion_poses:
         ground_truth = loadData.load_quaternion_poses(path_to_dataset_directory + '/' + true_position_filename)
     else:
         ground_truth = loadData.load_poses(path_to_dataset_directory + '/' + true_position_filename)
 
+    if args.start_image != args.end_image:
+        images = loadData.load_images(path_to_dataset_directory + '/' + images_directory_name + '/',
+                                      args.start_image, args.end_image, args.count_image)
+        if args.end_image < args.start_image:
+            ground_truth = ground_truth[args.start_image::args.count_image]
+        else:
+            ground_truth = ground_truth[args.start_image:args.end_image:args.count_image]
+    else:
+        images = loadData.load_images(path_to_dataset_directory + '/' + images_directory_name + '/')
+    if not ground_truth or not images:
+        print(lang.error_out_of_range_load_images)
+        return
+
     for distortion in image_distortions:
         if distortion == 'blur':
-            images = add_blur(images)
+            images = add_blur(images, 10)
         elif distortion == 'impulse':
-            images = add_sp_noise(images, 0.05)
+            images = add_impulse_noise(images, 0.05)
         elif distortion == 'uniform':
             images = add_uniform_noise(images, 0.5)
         elif distortion == 'gauss':
             images = add_gaussian_noise(images, 0.5)
 
-    if args.start_image != args.end_image:
-        images = loadData.load_images(path_to_dataset_directory + '/' + images_directory_name + '/',
-                                               args.start_image, args.end_image, args.count_image)
-        ground_truth = ground_truth[args.start_image:args.end_image:args.count_image]
-    else:
-        images = loadData.load_images(path_to_dataset_directory + '/' + images_directory_name + '/')
     init_pose = ground_truth[0]
-    #init_pose = np.array([init_pose[0,3], init_pose[1,3], init_pose[2,3]])
+    # init_pose = np.array([init_pose[0,3], init_pose[1,3], init_pose[2,3]])
     gt_path = []
     x_index = args.order.find('x')
     y_index = args.order.find('y')
@@ -125,7 +134,7 @@ def main():
         for i in range(iteration):
             start = timeit.default_timer()
             piece = np.array(calculate_track(images, feature_detection_algorithm,
-                                    intrinsic_mat, initial_pose=init_pose, ground_truth=ground_truth,
+                                             intrinsic_mat, initial_pose=init_pose, ground_truth=ground_truth,
                                              threshold=threshold, inverse_mat=args.inverse_mat))
             if i == 0:
                 track = piece
@@ -134,19 +143,19 @@ def main():
             stop = timeit.default_timer()
             current_time = stop - start
             time += current_time
-            print('Время выполнения вычислений для итерации {}: {} c.'.format(i+1, round(current_time,4)))
+            print('Время выполнения вычислений для итерации {}: {} c.'.format(i + 1, round(current_time, 4)))
 
         track = track / iteration
         time /= iteration
 
-        print('Среднее время выполнения: {} c.'.format(round(time,4)))
+        print('Среднее время выполнения: {} c.'.format(round(time, 4)))
         es_path = []
         for i, pose in enumerate(track):
             es_path.append((pose[x_index, 3], pose[y_index, 3]))
         result[feature_detection_algorithm] = es_path
 
         error = np.linalg.norm(np.array(gt_path) - np.array(es_path), axis=1)
-        rate = error/gt_norm * 100
+        rate = error / gt_norm * 100
         average_rate = np.average(rate)
         print("Средний процент ошибок {}: {}%".format(feature_detection_algorithm, round(average_rate, 2)))
     # print(track)
@@ -168,7 +177,7 @@ def interaction_with_user():
     while path_to_dataset_directory != '' and not os.path.exists(path_to_dataset_directory):
         path_to_dataset_directory = input(lang.fail_input_directory_text)
     if path_to_dataset_directory == '':
-        path_to_dataset_directory = '/sample/dataset/00/'
+        path_to_dataset_directory = '/dataset/'
     else:
         calib_filename = input(lang.input_calib_filename_text)
         while calib_filename != '' and not os.path.exists(path_to_dataset_directory + '/' + calib_filename):
@@ -179,9 +188,10 @@ def interaction_with_user():
         while not os.path.exists(path_to_dataset_directory + '/' + images_directory_name):
             images_directory_name = input(lang.fail_input_directory_text)
         if images_directory_name == '':
-            images_directory_name = '/image_0/'
+            images_directory_name = '/images/'
         true_position_filename = input(lang.input_position_filename_text)
-        while true_position_filename != '' and not os.path.exists(path_to_dataset_directory + '/' + true_position_filename):
+        while true_position_filename != '' and not os.path.exists(
+                path_to_dataset_directory + '/' + true_position_filename):
             true_position_filename = input(lang.fail_input_filename_text)
         if true_position_filename == '':
             true_position_filename = 'poses.txt'
@@ -210,7 +220,6 @@ def interaction_with_user():
 
     image_distortions = set()
     user_answer = input(lang.question_distortion_text)
-    print(user_answer)
     if user_answer == "да":
         while True:
             if image_distortions.__len__() != 0:

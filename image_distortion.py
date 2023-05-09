@@ -6,18 +6,18 @@ from matplotlib import pyplot as plt
 from progress.bar import Bar
 
 
-def add_blur(images):
+def add_blur(images, kernel_size=10):
     res_images = []
     bar = Bar('Добавление размытия:', max=len(images))
     for image in images:
-        blur = cv.blur(image, (5,5))
+        blur = cv.blur(image, (kernel_size, kernel_size))
         res_images.append(blur)
         bar.next()
     bar.finish()
     return res_images
 
 
-def add_sp_noise(images, prob=0.05):
+def add_impulse_noise(images, prob=0.05):
     res_images = []
     bar = Bar('Добавление импульсивного шума:', max=len(images))
     for image in images:
@@ -89,15 +89,19 @@ def test_gaus():
 
 
 def test_blur():
-    image = cv.imread('./sample/dataset/00/image_0/000000.png')
+    image = cv.imread('./kitti_3/images/000000.png')
     blur = cv.blur(image, (5,5))
-    plt.subplot(121), plt.imshow(image), plt.title('Original')
-    plt.subplot(122), plt.imshow(blur), plt.title('Blurred')
-    plt.show()
+    cv.imshow('i', image)
+    cv.waitKey()
+    cv.imshow('g', blur)
+    cv.waitKey()
+    # plt.subplot(121), plt.imshow(image), plt.title('Original')
+    # plt.subplot(122), plt.imshow(blur), plt.title('Blurred')
+    # plt.show()
 
 
 def test_sp_noise():
-    image = cv.imread('./sample/dataset/00/image_0/000000.png',0)
+    image = cv.imread('./kitti_6/images/000000.png',0)
     noised_image = sp_noise(image, 0.01)
     cv.imshow('image', noised_image)
     cv.waitKey(0)
@@ -111,4 +115,4 @@ def test_uniform_noise():
 
 
 if __name__ == '__main__':
-    sys.exit(test_gaus())
+    sys.exit(test_sp_noise())

@@ -2,9 +2,10 @@ import cv2 as cv
 import os
 import numpy as np
 from progress.bar import Bar
+import pyquaternion
 
 
-def load_images(folder, st_image=0, end_image=0, count=1):
+def load_images(folder, st_image=0, end_image=0, step=1):
     images = []
     filenames = os.listdir(folder)
     max_images = len(filenames)
@@ -17,9 +18,11 @@ def load_images(folder, st_image=0, end_image=0, count=1):
                 images.append(image)
         bar.finish()
     else:
-        if st_image > max_images or end_image > max_images or count > max_images or end_image < st_image:
+        if st_image > max_images or end_image > max_images or step > max_images:
             return []
-        bar = Bar('Загрузка изображений: ', max=(end_image-st_image)/count)
+        if end_image < st_image:
+            end_image = max_images
+        bar = Bar('Загрузка изображений: ', max=(end_image-st_image)/step)
         i = st_image
         while i < end_image:
             filename = filenames[i]
@@ -27,7 +30,7 @@ def load_images(folder, st_image=0, end_image=0, count=1):
             bar.next()
             if image is not None:
                 images.append(image)
-            i += count
+            i += step
         bar.finish()
     return images
 
@@ -62,14 +65,13 @@ def load_quaternion_poses(filepath):
         for line in f.readlines():
             L = np.fromstring(line, dtype=np.float64, sep=',')
             t = L[1:4]
-            quaternion = L[4:8]
-            R = quaternion_to_mat(quaternion[0],quaternion[1],quaternion[2],quaternion[3])
-            T = np.array([[R[0,0],R[0,1],R[0,2],t[0]],
-                          [R[1,0],R[1,1],R[1,2],t[1]],
-                          [R[2,0],R[2,1],R[2,2],t[2]],
-                          [0, 0, 0, 1]
-                          ])
-            poses.append(T)
+            q_raw = L[4:8]
+            quaternion = pyquaternion.Quaternion(q_raw[0],q_raw[1],q_raw[2],q_raw[3])
+            R = quaternion.transformation_matrix
+            R[0,3] = t[0]
+            R[1,3] = t[1]
+            R[2,3] = t[2]
+            poses.append(R)
     return poses
 
 
